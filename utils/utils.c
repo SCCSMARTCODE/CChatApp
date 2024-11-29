@@ -139,3 +139,22 @@ int setupClient(clientDetails *clientD){
     }
     return 0;
 }
+
+
+
+int setupServer(serverDetails *serverD){
+
+    serverD->serverSocketFD = get_socket();
+    if (serverD->serverSocketFD == -1){
+        perror("Error: [ creating Client Socket Process Failed ]\n\n");
+        return -1;
+    }
+
+    serverD->serverAddress = get_address();
+    if (serverD->serverAddress == NULL){
+        perror("Error: [ generating server address failed ]\n\n");
+        return -1;
+    }
+
+    return 0;
+}

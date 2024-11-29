@@ -26,8 +26,15 @@ typedef struct clientDetails{
 
 
 
+typedef struct serverDetails{
+    int serverSocketFD;
+    struct sockaddr *serverAddress;
+}serverDetails;
+
+
 
 int setupClient(clientDetails *clientD);
+int setupServer(serverDetails *serverD);
 int get_socket();
 struct sockaddr *get_address();
 char *get_client_name();
