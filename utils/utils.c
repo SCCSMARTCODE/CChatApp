@@ -55,7 +55,7 @@ struct sockaddr *get_address(){
         }
         else if(inputLen == 0){
             perror("PORT buffer is empty.\n");
-            return NULL;
+            // return NULL;
         }
         else{
             perror("Please Input a correct PORT no.\n");
@@ -157,4 +157,102 @@ int setupServer(serverDetails *serverD){
     }
 
     return 0;
+}
+
+void *handleOtherOperationsOnSeperateThread(void *serverFD){
+    int *client_fd = malloc(sizeof(int));
+    struct sockaddr clientAddress;
+    socklen_t addr_len = sizeof(clientAddress);
+    int server_id = *(int *)(serverFD);
+
+    while(1){
+        *client_fd = accept(server_id, &clientAddress, &addr_len);
+        if (*client_fd < 0) {
+            perror("Accept failed");
+            free(client_fd);
+            continue;
+        }
+        printf("Client connected.\n");
+
+        pthread_t threadId;
+        if (pthread_create(&threadId, NULL, handleNewlyAcceptedClient, client_fd) != 0){
+            perror("Failed to create the thread to handle new client operation");
+            close(*client_fd);
+            free(client_fd);
+        }
+    }
+}
+
+void *handleNewlyAcceptedClient(void *client_fd_ptr) {
+    char receivedMessage[100];
+    const char *basic_message = "Connection Successful\n";
+    int clientFd = *(int *)client_fd_ptr;
+    free(client_fd_ptr);
+
+    // Send a welcome message
+    if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
+        perror("send failed");
+        close(clientFd);
+        return NULL;
+    }
+
+    while (1) {
+        ssize_t bytesReceived = recv(clientFd, receivedMessage, sizeof(receivedMessage) - 1, 0);
+        
+        if (bytesReceived < 0) {
+            perror("recv failed");
+            break;
+        } else if (bytesReceived == 0) {
+            printf("Client disconnected.\n");
+            break;
+        }
+
+        receivedMessage[bytesReceived] = '\0';
+        printf("Received [ %s ]\n", receivedMessage);
+    }
+
+    close(clientFd);
+    return NULL;
+}
+
+
+
+void *sendMessages(void *clientD_ptr) {
+    clientDetails *clientD = (clientDetails *)clientD_ptr;
+    char message[100];
+
+    while (1) {
+        printf("Enter message to send: ");
+        fgets(message, sizeof(message), stdin);
+        message[strcspn(message, "\n")] = 0;
+
+        if (send(clientD->clientSocketFD, message, strlen(message), 0) == -1) {
+            perror("Send failed");
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+void *receiveMessages(void *clientD_ptr) {
+    clientDetails *clientD = (clientDetails *)clientD_ptr;
+    char buffer[100];
+    ssize_t bytesReceived;
+
+    while (1) {
+        bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
+        if (bytesReceived < 0) {
+            perror("Receive failed");
+            break;
+        } else if (bytesReceived == 0) {
+            printf("Server disconnected.\n");
+            break;
+        }
+
+        buffer[bytesReceived] = '\0';
+        printf("Received: %s\n", buffer);
+    }
+
+    return NULL;
 }

@@ -8,10 +8,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 
 
 #define IP_INPUT_MAX 40 // This extend to manage ipv4 and ipv6(for future implementation)
-#define PORT_INPUT_MAX 6
+#define PORT_INPUT_MAX 7
 #define CLIENT_NAME_INPUT_MAX 62
 
 
@@ -35,6 +36,12 @@ typedef struct serverDetails{
 
 int setupClient(clientDetails *clientD);
 int setupServer(serverDetails *serverD);
+void *handleOtherOperationsOnSeperateThread(void*);
+void *handleNewlyAcceptedClient(void *client_fd_ptr);
+
+void *sendMessages(void *clientD_ptr);
+void *receiveMessages(void *clientD_ptr);
+
 int get_socket();
 struct sockaddr *get_address();
 char *get_client_name();
