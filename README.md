@@ -23,8 +23,8 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
    ```  
 2. Compile the application:  
    ```bash
-   gcc -o server server.c  
-   gcc -o client client.c  
+   gcc socket_client/main.c utils/utils.c -o client -lpthread
+   gcc socket_server/main.c utils/utils.c -o server -lpthread
    ```  
 3. Run the server:  
    ```bash
@@ -32,7 +32,7 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
    ```  
 4. Run the client (on the same or another machine):  
    ```bash
-   ./client <server_ip>
+   ./client
    ```  
 
 ## Project Phases  
@@ -40,12 +40,12 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
 ### Phase 1: CLI-Based Chat Application  
 - [x] Basic client-server communication  
 - [x] Support for sending and receiving messages  
-- [ ] Error handling and user validation  
+- [x] Error handling and user validation  
 
 ### Phase 2: Multi-Client Support  
-- [ ] Threaded server to handle multiple clients  
-- [ ] Broadcast messages to all connected clients  
-- [ ] User disconnection handling  
+- [x] Threaded server to handle multiple clients  
+- [x] Broadcast messages to all connected clients  
+- [x] User disconnection handling  
 
 ### Phase 3: GUI Integration  
 - [ ] Design a simple GUI using GTK or Qt  
@@ -60,11 +60,20 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
 ## Directory Structure  
 ```
 CChatApp/  
-│  
-├── server.c         # Server-side code  
-├── client.c         # Client-side code  
-├── Makefile         # For building the project  
-└── README.md        # Project documentation  
+├── LICENSE
+├── README.md
+├── client
+├── server
+├── socket_client
+│   ├── a.out
+│   ├── client.h
+│   └── main.c
+├── socket_server
+│   ├── main.c
+│   └── server.h
+└── utils
+    ├── utils.c
+    └── utils.h
 ```  
 
 ## Contributing  
