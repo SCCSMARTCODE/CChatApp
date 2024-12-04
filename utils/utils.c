@@ -20,16 +20,16 @@ struct sockaddr *get_address(){
             ip[inputLen-1] = '\0';
         }
         else if(inputLen == 0){
-            perror("IP Address buffer is empty\n");
+            LOG_ERROR("IP Address buffer is empty\n");
             return NULL;
         }
         else{
-            perror("Please Input a correct IP Address\n");
+            LOG_INFO("Please Input a correct IP Address\n");
             return NULL;
         }
     }
     else{
-        perror("Error reading IP Address");
+        LOG_ERROR("Error reading IP Address");
         return NULL;
     }
 
@@ -48,27 +48,28 @@ struct sockaddr *get_address(){
             errno = 0;
 
             port = (int)strtol(port_str, &endptr, 10);
-            if (*endptr != '\0'){
-                perror("Please Input a correct PORT no. eg [ 2000 ]\n");
+            if (*endptr != '\0' && *endptr != '\n'){
+                LOG_ERROR("Please Input a correct PORT no. eg [ 2000 ]\n");
                 return NULL;
             }
         }
         else if(inputLen == 0){
-            perror("PORT buffer is empty.\n");
-            // return NULL;
+            LOG_INFO("PORT buffer is empty.\n");
         }
         else{
-            perror("Please Input a correct PORT no.\n");
+            LOG_ERROR("Please Input a correct PORT no.\n");
             return NULL;
         }
     }
     else{
-        perror("Error reading the PORT no..");
+        LOG_ERROR("Error reading the PORT no..");
         return NULL;
     }
 
-
-    printf("Generating Address for IP [ %s ] and PORT [ %d ]...\n\n", ip, port);
+    if (*ip)
+        LOG_INFO("Generating Address for IP [ %s ] and PORT [ %d ]...\n\n", ip, port);
+    else
+        LOG_INFO("Generating Address for IP [ 0.0.0.0 ] and PORT [ %d ]...\n\n", port);
 
     struct sockaddr_in *new_address = malloc(sizeof(struct sockaddr_in));
     new_address->sin_port = htons(port);
@@ -97,19 +98,19 @@ char *get_client_name(){
             clientName[inputLen-1] = '\0';
         }
         else if(inputLen == 0){
-            perror("USERNAME buffer is empty.\n");
+            LOG_ERROR("USERNAME buffer is empty.\n");
             free(clientName);
             return NULL;
         }
         else{
             printf("%ld\n", inputLen);
-            perror("Please Input a valid name\n");
+            LOG_INFO("Please Input a valid name\n");
             free(clientName);
             return NULL;
         }
     }
     else{
-        perror("Error reading the USERNAME..");
+        LOG_ERROR("Error reading the USERNAME..");
         free(clientName);
         return NULL;
     }
@@ -122,19 +123,19 @@ int setupClient(clientDetails *clientD){
 
     clientD->clientSocketFD = get_socket();
     if (clientD->clientSocketFD == -1){
-        perror("Error: [ creating Client Socket Process Failed ]\n\n");
+        LOG_ERROR(" [ creating Client Socket Process Failed ]\n\n");
         return -1;
     }
 
     clientD->serverAddress = get_address();
     if (clientD->serverAddress == NULL){
-        perror("Error: [ generating server address failed ]\n\n");
+        LOG_ERROR("[ generating server address failed ]\n\n");
         return -1;
     }
 
     clientD->clientName = get_client_name();
     if (clientD->clientName == NULL){
-        perror("Error: [ getting USERNAME failed ]\n\n");
+        LOG_ERROR(" [ getting USERNAME failed ]\n\n");
         return -1;
     }
     return 0;
@@ -146,69 +147,114 @@ int setupServer(serverDetails *serverD){
 
     serverD->serverSocketFD = get_socket();
     if (serverD->serverSocketFD == -1){
-        perror("Error: [ creating Client Socket Process Failed ]\n\n");
+        LOG_ERROR(" [ creating Client Socket Process Failed ]\n\n");
         return -1;
     }
 
     serverD->serverAddress = get_address();
     if (serverD->serverAddress == NULL){
-        perror("Error: [ generating server address failed ]\n\n");
+        LOG_ERROR(" [ generating server address failed ]\n\n");
         return -1;
     }
-
+    serverD->clientFDStore = (int *)malloc(sizeof(int)*MAX_CLIENTS);
+    for (int x = 0; x < MAX_CLIENTS; x++){
+        serverD->clientFDStore[x] = -1;
+    }
     return 0;
 }
 
-void *handleOtherOperationsOnSeperateThread(void *serverFD){
+void *handleOtherOperationsOnSeperateThread(void *serverD){
     int *client_fd = malloc(sizeof(int));
     struct sockaddr clientAddress;
     socklen_t addr_len = sizeof(clientAddress);
-    int server_id = *(int *)(serverFD);
+    int server_fd = ((serverDetails *)serverD)->serverSocketFD;
 
     while(1){
-        *client_fd = accept(server_id, &clientAddress, &addr_len);
+        *client_fd = accept(server_fd, &clientAddress, &addr_len);
         if (*client_fd < 0) {
-            perror("Accept failed");
-            free(client_fd);
+            LOG_ERROR("Accept failed");
             continue;
         }
-        printf("Client connected.\n");
+        LOG_SUCCESS("Client connected.\n");
 
         pthread_t threadId;
-        if (pthread_create(&threadId, NULL, handleNewlyAcceptedClient, client_fd) != 0){
-            perror("Failed to create the thread to handle new client operation");
+        HNAC *param = (HNAC *)malloc(sizeof(HNAC));
+        if (!param) {
+            LOG_ERROR("Failed to allocate memory for HNAC structure");
             close(*client_fd);
-            free(client_fd);
+            continue;
+        }
+        param->clientSocketFD = client_fd;
+        param->clientFDStore = ((serverDetails *)serverD)->clientFDStore;
+        if (pthread_create(&threadId, NULL, handleNewlyAcceptedClient, param) != 0){
+            LOG_ERROR("Failed to create the thread to handle new client operation");
+            close(*client_fd);
         }
     }
+    free(client_fd);
+    
 }
 
-void *handleNewlyAcceptedClient(void *client_fd_ptr) {
+void *handleNewlyAcceptedClient(void *param) {
     char receivedMessage[100];
-    const char *basic_message = "Connection Successful\n";
-    int clientFd = *(int *)client_fd_ptr;
-    free(client_fd_ptr);
+    const char *basic_message = "Connected to Server Successfully\n";
+    int clientFd = *(((HNAC *)param)->clientSocketFD);
 
     // Send a welcome message
     if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
-        perror("send failed");
+        LOG_ERROR("sending welcome message failed");
         close(clientFd);
         return NULL;
     }
 
+    // get client info
+    char clientUsername[CLIENT_NAME_INPUT_MAX];
+    if (recv(clientFd, clientUsername, sizeof(clientUsername), 0) == -1){
+        LOG_ERROR("Failed to recieve client details");
+        close(clientFd);
+        return NULL;
+    }
+
+    // filling the clientFDStore for client sync
+    int x;
+    int *clientFDStore = ((HNAC *)param)->clientFDStore;
+
+
+    for (x = 0; x < MAX_CLIENTS; x++) {
+        if (clientFDStore[x] == -1) {
+            clientFDStore[x] = clientFd;
+            break;
+        }
+        
+    }
+    
+    // Check if we reached the end of the array without finding a slot
+    if (x == MAX_CLIENTS) {
+        LOG_INFO("Client FD Store is full; consider increasing MAX_CLIENTS");
+    }
+
+
     while (1) {
         ssize_t bytesReceived = recv(clientFd, receivedMessage, sizeof(receivedMessage) - 1, 0);
+
         
         if (bytesReceived < 0) {
-            perror("recv failed");
+            LOG_ERROR("recv failed");
             break;
         } else if (bytesReceived == 0) {
-            printf("Client disconnected.\n");
+            LOG_INFO("Client disconnected.\n");
+            for (x = 0; x < MAX_CLIENTS; x++) {
+                if (((HNAC *)param)->clientFDStore[x] == clientFd) {
+                    ((HNAC *)param)->clientFDStore[x] = -1;
+                    break;
+                }
+            }
             break;
         }
 
         receivedMessage[bytesReceived] = '\0';
-        printf("Received [ %s ]\n", receivedMessage);
+        broadcastMessage(clientUsername, receivedMessage, clientFd, clientFDStore);
+
     }
 
     close(clientFd);
@@ -219,15 +265,14 @@ void *handleNewlyAcceptedClient(void *client_fd_ptr) {
 
 void *sendMessages(void *clientD_ptr) {
     clientDetails *clientD = (clientDetails *)clientD_ptr;
-    char message[100];
+    char message[NETWORK_MESSAGE_BUFFER_SIZE];
 
     while (1) {
-        printf("Enter message to send: ");
         fgets(message, sizeof(message), stdin);
         message[strcspn(message, "\n")] = 0;
 
         if (send(clientD->clientSocketFD, message, strlen(message), 0) == -1) {
-            perror("Send failed");
+            LOG_ERROR("Send failed");
             break;
         }
     }
@@ -237,22 +282,37 @@ void *sendMessages(void *clientD_ptr) {
 
 void *receiveMessages(void *clientD_ptr) {
     clientDetails *clientD = (clientDetails *)clientD_ptr;
-    char buffer[100];
+    char buffer[NETWORK_MESSAGE_BUFFER_SIZE];
     ssize_t bytesReceived;
 
     while (1) {
         bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
         if (bytesReceived < 0) {
-            perror("Receive failed");
+            LOG_ERROR("Receive failed");
             break;
         } else if (bytesReceived == 0) {
-            printf("Server disconnected.\n");
+            LOG_INFO("Server disconnected.\n");
             break;
         }
 
         buffer[bytesReceived] = '\0';
-        printf("Received: %s\n", buffer);
+        printf("%s\n", buffer);
     }
 
     return NULL;
+}
+
+
+void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore) {
+    char formatted_message[NETWORK_MESSAGE_BUFFER_SIZE];
+
+    snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, receivedMessage);
+
+    for (int x = 0; x < MAX_CLIENTS; x++) {
+        if (clientFDStore[x] != currentClientFD && clientFDStore[x] != -1) {
+            if (send(clientFDStore[x], formatted_message, strlen(formatted_message), 0) < 0) {
+                printf("Failed to send message to %d", clientFDStore[x]);
+            }
+        }
+    }
 }
