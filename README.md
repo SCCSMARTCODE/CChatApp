@@ -60,10 +60,25 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
 ## Directory Structure  
 ```
 CChatApp/  
+.
 ├── LICENSE
+├── Makefile
 ├── README.md
-├── client
-├── server
+├── bin
+│   ├── client
+│   └── server
+├── build
+│   ├── socket_client
+│   │   └── main.o
+│   ├── socket_server
+│   │   └── main.o
+│   └── utils
+│       └── utils.o
+├── gui
+│   ├── #chat_app.glade#
+│   ├── chat_app.glade
+│   ├── chat_app.glade~
+│   └── style.css
 ├── socket_client
 │   ├── a.out
 │   ├── client.h
