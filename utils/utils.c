@@ -92,7 +92,7 @@ char *get_client_name(){
 
     if (fgets(clientName, CLIENT_NAME_INPUT_MAX, stdin) != NULL){
         size_t inputLen = strlen(clientName);
-        char* endptr;
+        // char* endptr;
 
         if ((inputLen > 0) && (clientName[inputLen-1] == '\n')){
             clientName[inputLen-1] = '\0';
