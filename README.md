@@ -23,16 +23,15 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
    ```  
 2. Compile the application:  
    ```bash
-   gcc socket_client/main.c utils/utils.c -o client -lpthread
-   gcc socket_server/main.c utils/utils.c -o server -lpthread
+   make
    ```  
 3. Run the server:  
    ```bash
-   ./server
+   ./bin/server
    ```  
 4. Run the client (on the same or another machine):  
    ```bash
-   ./client
+   ./bin/client
    ```  
 
 ## Project Phases  
