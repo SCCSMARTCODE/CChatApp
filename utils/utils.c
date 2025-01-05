@@ -160,7 +160,7 @@ int setupClient(clientDetails *clientD){
     return 0;
 }
 
-int setupClientFromUi(clientDetails *clientD, GtkBuilder* builder){
+int setupClientFromGUI(clientDetails *clientD, GtkBuilder* builder){
 
     clientD->clientSocketFD = get_socket();
     if (clientD->clientSocketFD == -1){
@@ -181,12 +181,14 @@ int setupClientFromUi(clientDetails *clientD, GtkBuilder* builder){
     g_signal_connect(connection_dialog_button, "clicked", G_CALLBACK(connection_dialog_button_handler), pack);
 
     gint response = gtk_dialog_run(GTK_DIALOG(connection_dialog));
+    gtk_widget_destroy(connection_dialog);
+    gtk_widget_hide(connection_dialog);
     UNUSED(response);
 
     return 0;
 }
 
-void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack){
+void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack) {
 
     UNUSED(button);
 
@@ -204,7 +206,8 @@ void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack){
     const char* port_str = gtk_entry_get_text(GTK_ENTRY(port_entry));
     const char* username = gtk_entry_get_text(GTK_ENTRY(user_name_entry));
 
-    if (strlen(ip) < 1 || strlen(port_str) < 1 || strlen(username) < 1){
+    if (strlen(ip) < 1 || strlen(port_str) < 1 || strlen(username) < 1) {
+        LOG_ERROR("All fields are required.");
         return;
     }
 
@@ -212,19 +215,29 @@ void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack){
     errno = 0;
 
     port = (int)strtol(port_str, &endptr, 10);
-    if (*endptr != '\0' && *endptr != '\n'){
-        LOG_ERROR("Please Input a correct PORT no. eg [ 2000 ]\n");
+    if (*endptr != '\0' && *endptr != '\n') {
+        LOG_ERROR("Please input a correct PORT no. eg [ 2000 ]\n");
         return;
     }
 
     pack->data->serverAddress = get_address(&port, ip);
     pack->data->clientName = get_client_name(username);
 
+    if (connect(pack->data->clientSocketFD, pack->data->serverAddress, sizeof(*(pack->data->serverAddress))) < 0) {
+        LOG_ERROR("Failed to connect to server: %s", strerror(errno));
+    } else {
+        LOG_SUCCESS("Successfully connected to the server.");
+        pack->connection_status = TRUE;
 
-    if (pack->data->clientName && pack->data->clientSocketFD && pack->data->serverAddress){
-        gtk_widget_hide(pack->connection_dialog);
+        // Emit a response signal to exit the dialog loop
+        gtk_dialog_response(GTK_DIALOG(pack->connection_dialog), GTK_RESPONSE_OK);
+        gtk_widget_destroy(pack->connection_dialog);
     }
+
+    gtk_dialog_response(GTK_DIALOG(pack->connection_dialog), GTK_RESPONSE_OK);
+    gtk_widget_destroy(pack->connection_dialog);
 }
+
 
 int setupServer(serverDetails *serverD){
 
@@ -402,6 +415,7 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
             pack->status = FALSE;
         }
     }
+    gtk_entry_set_text(GTK_ENTRY(message_entry), "");
 
 }
 
@@ -463,4 +477,11 @@ void broadcastMessage(char *clientUsername, char *receivedMessage, int currentCl
             }
         }
     }
+}
+
+
+void cleanup(clientDetails *clientD) {
+    if (clientD->clientSocketFD > 0) close(clientD->clientSocketFD);
+    if (clientD->clientName) free(clientD->clientName);
+    if (clientD->serverAddress) free(clientD->serverAddress);
 }

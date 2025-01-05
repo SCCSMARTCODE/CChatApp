@@ -40,6 +40,7 @@ typedef struct CDBHData{
     clientDetails* data;
     GtkBuilder* builder;
     GtkWidget* connection_dialog;
+    gboolean connection_status;
 }CDBHData;
 
 
@@ -71,11 +72,12 @@ typedef struct HNAC{
 
 
 int setupClient(clientDetails *clientD);
-int setupClientFromUi(clientDetails *clientD, GtkBuilder* builder);
+int setupClientFromGUI(clientDetails *clientD, GtkBuilder* builder);
 int setupServer(serverDetails *serverD);
 void *handleOtherOperationsOnSeperateThread(void*);
 void *handleNewlyAcceptedClient(void *);
 void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore);
+void cleanup(clientDetails *clientD);
 
 void *sendMessages(void *clientD_ptr);
 void *sendMessagesWithGUI(void *pack_ptr);
