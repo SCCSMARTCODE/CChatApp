@@ -24,7 +24,7 @@
 #define LOG_INFO(format, ...)  g_print("[INFO]: " format "\n", ##__VA_ARGS__)
 #define LOG_ERROR(format, ...) fprintf(stderr, "[ERROR]: " format "\n", ##__VA_ARGS__)
 #define LOG_SUCCESS(format, ...) g_print("[SUCCESS]: " format "\n", ##__VA_ARGS__)
-#define MESSAGE_FORMAT "[USER: %s] Message: %s"
+#define MESSAGE_FORMAT "%s %s"
 
 
 
@@ -34,6 +34,12 @@ typedef struct clientDetails{
     char *clientName;
     struct sockaddr *serverAddress;
 }clientDetails;
+
+
+typedef struct RMWGUI {
+    clientDetails *clientD;
+    GtkBuilder* builder;
+}RMWGUI;
 
 
 typedef struct CDBHData{
@@ -93,3 +99,4 @@ char *get_client_name(const char* ui_client_name);
 
 void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack);
 void send_message_handler(GtkWidget *button, SMHPack* pack);
+void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username);

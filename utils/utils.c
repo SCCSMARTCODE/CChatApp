@@ -398,19 +398,59 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
     UNUSED(button);
 
     GtkWidget* message_entry = GTK_WIDGET(gtk_builder_get_object(pack->builder, "message_entry"));
+    
 
     const char* message = gtk_entry_get_text(GTK_ENTRY(message_entry));
-
+    
+    
     if (strlen(message) >= 1){
+        add_to_messages_interface(pack->builder, message, TRUE, "YOU");
         if (send(pack->data->clientSocketFD, message, strlen(message), 0) == -1) {
             pack->status = FALSE;
             LOG_ERROR("Send failed");
         }
-        pack->status = TRUE;
+        else{
+            pack->status = TRUE;
+        }
     }
     gtk_entry_set_text(GTK_ENTRY(message_entry), "");
 
 }
+
+
+void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username) {
+    GtkWidget* messages_interface = GTK_WIDGET(gtk_builder_get_object(builder, "messages_interface"));
+
+    GtkWidget* message_node = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+
+    GtkWidget* message_label = gtk_label_new(message);
+    gtk_widget_set_halign(message_label, GTK_ALIGN_START);
+
+    GtkWidget* username_label = gtk_label_new(sender_username);
+    gtk_widget_set_halign(username_label, GTK_ALIGN_END);
+
+    gtk_box_pack_start(GTK_BOX(message_node), message_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(message_node), username_label, FALSE, FALSE, 0);
+
+    // Apply alignment and margins based on is_sent
+    if (is_sent) {
+        gtk_widget_set_halign(message_node, GTK_ALIGN_END); // Align the whole message node to the right
+        gtk_widget_set_margin_start(message_node, 50);      // Add left margin for spacing
+    } else {
+        gtk_widget_set_halign(message_node, GTK_ALIGN_START); // Align the whole message node to the left
+        gtk_widget_set_margin_end(message_node, 50);          // Add right margin for spacing
+    }
+
+    GtkWidget* row = gtk_list_box_row_new();
+    gtk_container_add(GTK_CONTAINER(row), message_node); // Add the message node to the row
+
+    gtk_list_box_insert(GTK_LIST_BOX(messages_interface), row, -1); // Insert at the end of the list
+
+    gtk_widget_show_all(row);
+}
+
+
+
 
 void *receiveMessages(void *clientD_ptr) {
     clientDetails *clientD = (clientDetails *)clientD_ptr;
@@ -435,10 +475,13 @@ void *receiveMessages(void *clientD_ptr) {
 }
 
 
-void *receiveMessagesWithGUI(void *clientD_ptr) {
-    clientDetails *clientD = (clientDetails *)clientD_ptr;
+void *receiveMessagesWithGUI(void *pack) {
+    clientDetails *clientD = ((RMWGUI *)pack)->clientD;
+    GtkBuilder* builder = ((RMWGUI *)pack)->builder;
     char buffer[NETWORK_MESSAGE_BUFFER_SIZE];
     ssize_t bytesReceived;
+    char sender_username[CLIENT_NAME_INPUT_MAX];
+    char message[CLIENT_NAME_INPUT_MAX];
 
     while (1) {
         bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
@@ -451,7 +494,25 @@ void *receiveMessagesWithGUI(void *clientD_ptr) {
         }
 
         buffer[bytesReceived] = '\0';
-        g_print("%s\n", buffer);
+
+        int i = 0;        
+        // extracting username and message from buffer pack
+         while (buffer[i] != ' ' && buffer[i] != '\0') {
+            sender_username[i] = buffer[i];
+            i++;
+        }
+        sender_username[i] = '\0';
+
+        i++;
+        int j = 0;
+        while (buffer[i] != '\0') {
+            message[j] = buffer[i];
+            i++;
+            j++;
+        }
+        message[j] = '\0';
+
+        add_to_messages_interface(builder, message, FALSE, sender_username);
     }
 
     return NULL;
