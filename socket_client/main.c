@@ -47,7 +47,8 @@ int main(int argc, char **argv) {
     }
     LOG_SUCCESS("Send thread created successfully.");
 
-    if (pthread_create(&receiveThread, NULL, receiveMessagesWithGUI, &clientD) != 0) {
+    RMWGUI r_pack = {.clientD = &clientD, .builder = builder};
+    if (pthread_create(&receiveThread, NULL, receiveMessagesWithGUI, &r_pack) != 0) {
         LOG_ERROR("Failed to create receive thread: %s", strerror(errno));
 
         pthread_cancel(sendThread);
