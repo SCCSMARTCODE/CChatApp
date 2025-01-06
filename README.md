@@ -47,9 +47,9 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
 - [x] User disconnection handling  
 
 ### Phase 3: GUI Integration  
-- [ ] Design a simple GUI using GTK or Qt  
-- [ ] Add message input/output areas  
-- [ ] Integrate GUI with networking logic  
+- [x] Design a simple GUI using GTK  
+- [x] Add message input/output areas  
+- [x] Integrate GUI with networking logic  
 
 ### Phase 4: Advanced Features  
 - [ ] Message encryption using OpenSSL  
