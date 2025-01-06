@@ -131,7 +131,7 @@ char *get_client_name(const char* ui_client_name){
     }
     else{
 
-        strcat(clientName, ui_client_name);
+        strcpy(clientName, ui_client_name);
     }
     return clientName;
 }
@@ -381,23 +381,14 @@ void *sendMessages(void *clientD_ptr) {
 
 void *sendMessagesWithGUI(void *pack_ptr) {
     SMData *pack = (SMData *)pack_ptr;
-    // char message[NETWORK_MESSAGE_BUFFER_SIZE];
-
-    while (1) {
         
-        GtkWidget* send_button = GTK_WIDGET(gtk_builder_get_object(pack->builder, "send_button"));
+    GtkWidget* send_button = GTK_WIDGET(gtk_builder_get_object(pack->builder, "send_button"));
 
-        SMHPack *smh_pack = malloc(sizeof(SMHPack));
-        smh_pack->data = pack->data;
-        smh_pack->builder = pack->builder;
+    SMHPack *smh_pack = malloc(sizeof(SMHPack));
+    smh_pack->data = pack->data;
+    smh_pack->builder = pack->builder;
 
-        g_signal_connect(send_button, "clicked", G_CALLBACK(send_message_handler), smh_pack);
-
-        if (!(smh_pack->status)) {
-            LOG_ERROR("Send failed");
-            break;
-        }
-    }
+    g_signal_connect(send_button, "clicked", G_CALLBACK(send_message_handler), smh_pack);
 
     return NULL;
 }
@@ -413,14 +404,16 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
     if (strlen(message) >= 1){
         if (send(pack->data->clientSocketFD, message, strlen(message), 0) == -1) {
             pack->status = FALSE;
+            LOG_ERROR("Send failed");
         }
+        pack->status = TRUE;
     }
     gtk_entry_set_text(GTK_ENTRY(message_entry), "");
 
 }
 
-void *receiveMessages(void *pack_ptr) {
-    clientDetails *clientD = (clientDetails *)pack_ptr;
+void *receiveMessages(void *clientD_ptr) {
+    clientDetails *clientD = (clientDetails *)clientD_ptr;
     char buffer[NETWORK_MESSAGE_BUFFER_SIZE];
     ssize_t bytesReceived;
 
