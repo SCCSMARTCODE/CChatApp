@@ -28,6 +28,11 @@ int main() {
     }
     LOG_SUCCESS("Socket successfully bound to [ IP: %s ] [ PORT: %d ]", ipStr, port);
 
+
+    // Step 2+: manage RSA key pair generation and saving the keys to files if not exists
+    manage_encryption_info();
+
+
     // Step 3: Start listening on the socket
     if (listen(serverD.serverSocketFD, SERVER_BACKLOG) < 0) {
         LOG_ERROR("Error listening on socket: %s", strerror(errno));
