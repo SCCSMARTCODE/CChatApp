@@ -6,10 +6,18 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
 #include <gtk/gtk.h>
+
+
+// openssl...
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 
 #define UNUSED(x) (void)(x)
 
@@ -68,6 +76,7 @@ typedef struct serverDetails{
     int serverSocketFD;
     struct sockaddr *serverAddress;
     int *clientFDStore;
+    
 }serverDetails;
 
 
@@ -100,3 +109,5 @@ char *get_client_name(const char* ui_client_name);
 void connection_dialog_button_handler(GtkWidget* button, CDBHData *pack);
 void send_message_handler(GtkWidget *button, SMHPack* pack);
 void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username);
+
+int file_exists(const char *filename);

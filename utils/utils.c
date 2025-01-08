@@ -417,37 +417,61 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
 
 }
 
-
 void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username) {
+
     GtkWidget* messages_interface = GTK_WIDGET(gtk_builder_get_object(builder, "messages_interface"));
+    if (!messages_interface || !GTK_IS_LIST_BOX(messages_interface)) {
+        g_error("Invalid messages_interface!");
+        return;
+    }
+
+    GtkWidget* row = gtk_list_box_row_new();
+    if (!row) {
+        g_error("Failed to create GtkListBoxRow!");
+        return;
+    }
 
     GtkWidget* message_node = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    if (!message_node) {
+        g_error("Failed to create message_node!");
+        return;
+    }
 
     GtkWidget* message_label = gtk_label_new(message);
-    gtk_widget_set_halign(message_label, GTK_ALIGN_START);
-
     GtkWidget* username_label = gtk_label_new(sender_username);
+
+    if (!message_label || !username_label) {
+        g_error("Failed to create labels!");
+        return;
+    }
+
+    gtk_widget_set_halign(message_label, GTK_ALIGN_START);
     gtk_widget_set_halign(username_label, GTK_ALIGN_END);
 
     gtk_box_pack_start(GTK_BOX(message_node), message_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(message_node), username_label, FALSE, FALSE, 0);
 
-    // Apply alignment and margins based on is_sent
     if (is_sent) {
-        gtk_widget_set_halign(message_node, GTK_ALIGN_END); // Align the whole message node to the right
-        gtk_widget_set_margin_start(message_node, 50);      // Add left margin for spacing
+        gtk_widget_set_halign(message_node, GTK_ALIGN_END);
+        gtk_widget_set_margin_start(message_node, 50);
     } else {
-        gtk_widget_set_halign(message_node, GTK_ALIGN_START); // Align the whole message node to the left
-        gtk_widget_set_margin_end(message_node, 50);          // Add right margin for spacing
+        gtk_widget_set_halign(message_node, GTK_ALIGN_START);
+        gtk_widget_set_margin_end(message_node, 50);
     }
 
-    GtkWidget* row = gtk_list_box_row_new();
-    gtk_container_add(GTK_CONTAINER(row), message_node); // Add the message node to the row
+    gtk_container_add(GTK_CONTAINER(row), message_node);
+    gtk_list_box_insert(GTK_LIST_BOX(messages_interface), row, -1);
 
-    gtk_list_box_insert(GTK_LIST_BOX(messages_interface), row, -1); // Insert at the end of the list
+    g_print("About to show all widgets...\n");
 
-    gtk_widget_show_all(row);
+    if (GTK_IS_WIDGET(row)) {
+        gtk_widget_show_all(row);
+    } else {
+        g_error("row is invalid before gtk_widget_show_all!");
+    }
+
 }
+
 
 
 
@@ -538,4 +562,10 @@ void cleanup(clientDetails *clientD) {
     if (clientD->clientSocketFD > 0) close(clientD->clientSocketFD);
     if (clientD->clientName) free(clientD->clientName);
     if (clientD->serverAddress) free(clientD->serverAddress);
+}
+
+
+int file_exists(const char *filename) {
+    struct stat buffer;
+    return (stat(filename, &buffer) == 0);
 }
