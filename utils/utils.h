@@ -71,7 +71,6 @@ typedef struct SMHPack{
 }SMHPack;
 
 
-
 typedef struct serverDetails{
     int serverSocketFD;
     struct sockaddr *serverAddress;
