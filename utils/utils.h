@@ -18,6 +18,7 @@
 #include <openssl/pem.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/err.h>
 
 #define UNUSED(x) (void)(x)
 
@@ -25,7 +26,8 @@
 #define IP_INPUT_MAX 40 // This extend to manage ipv4 and ipv6(for future implementation)
 #define PORT_INPUT_MAX 7
 #define CLIENT_NAME_INPUT_MAX 62
-#define NETWORK_MESSAGE_BUFFER_SIZE 200
+#define NETWORK_MESSAGE_BUFFER_SIZE 2000
+#define AES_KEY_SIZE 32
 #define APP_UI_FILE_PATH "../gui/chat_app.glade"
 
 
@@ -41,7 +43,14 @@ typedef struct clientDetails{
     int clientSocketFD;
     char *clientName;
     struct sockaddr *serverAddress;
+    RSA *public_key;
 }clientDetails;
+
+
+typedef struct SecurityKeys{
+    RSA *private_key; // RSA format
+    char* public_key; // string format
+}SecurityKeys;
 
 
 typedef struct RMWGUI {
@@ -75,6 +84,7 @@ typedef struct serverDetails{
     int serverSocketFD;
     struct sockaddr *serverAddress;
     int *clientFDStore;
+    SecurityKeys *keys;
     
 }serverDetails;
 
@@ -82,6 +92,7 @@ typedef struct serverDetails{
 typedef struct HNAC{
     int *clientSocketFD;
     int *clientFDStore;
+    SecurityKeys *keys;
 }HNAC;
 
 
@@ -92,6 +103,7 @@ void *handleOtherOperationsOnSeperateThread(void*);
 void *handleNewlyAcceptedClient(void *);
 void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore);
 void cleanup(clientDetails *clientD);
+void process_public_key(char *received_key_str, RSA **client_public_key);
 
 void *sendMessages(void *clientD_ptr);
 void *sendMessagesWithGUI(void *pack_ptr);
@@ -110,3 +122,5 @@ void send_message_handler(GtkWidget *button, SMHPack* pack);
 void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username);
 
 int file_exists(const char *filename);
+char *base64_encode(const unsigned char *data, size_t len);
+unsigned char *generate_aes_key(size_t key_size);

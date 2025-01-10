@@ -285,6 +285,7 @@ void *handleOtherOperationsOnSeperateThread(void *serverD){
         }
         param->clientSocketFD = client_fd;
         param->clientFDStore = ((serverDetails *)serverD)->clientFDStore;
+        param->keys = ((serverDetails *)serverD)->keys;
         if (pthread_create(&threadId, NULL, handleNewlyAcceptedClient, param) != 0){
             LOG_ERROR("Failed to create the thread to handle new client operation");
             close(*client_fd);
@@ -296,20 +297,52 @@ void *handleOtherOperationsOnSeperateThread(void *serverD){
 
 void *handleNewlyAcceptedClient(void *param) {
     char receivedMessage[100];
-    const char *basic_message = "Connected to Server Successfully\n";
+    // const char *basic_message = "secured Connection to Server is established Successfully\n";
     int clientFd = *(((HNAC *)param)->clientSocketFD);
 
-    // Send a welcome message
-    if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
-        LOG_ERROR("sending welcome message failed");
+   
+
+    if (send(clientFd, ((HNAC *)param)->keys->public_key, strlen(((HNAC *)param)->keys->public_key), 0) == -1) {
+        LOG_ERROR("sending == [ public-security-key ] == failed");
         close(clientFd);
         return NULL;
+    }
+    else{
+        LOG_SUCCESS("sent == [ public-security-key ] == of size [ %ld ]", strlen(((HNAC *)param)->keys->public_key));
+        // g_print("%s\n", ((HNAC *)param)->keys->public_key);
+    }
+
+     // Send a welcome message
+    // if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
+    //     LOG_ERROR("sending welcome message failed");
+    //     close(clientFd);
+    //     return NULL;
+    // }
+    // else{
+    //     g_print("Welcome message sent\n");
+    // }
+
+    // get client info
+    char AES_key[NETWORK_MESSAGE_BUFFER_SIZE];
+    if (recv(clientFd, AES_key, sizeof(AES_key), 0) == -1){
+        LOG_ERROR("Failed to recieve AES Key\n");
+        close(clientFd);
+        return NULL;
+    }
+    else{
+        // g_print("AES_key [ %s ]\n", AES_key);
+        //
+
+        //convert the aes key to the proper format then save it for encription and decription
+
+
+        //
     }
 
     // get client info
     char clientUsername[CLIENT_NAME_INPUT_MAX];
     if (recv(clientFd, clientUsername, sizeof(clientUsername), 0) == -1){
-        LOG_ERROR("Failed to recieve client details");
+        LOG_ERROR("Failed to recieve client details\n");
         close(clientFd);
         return NULL;
     }
@@ -507,6 +540,8 @@ void *receiveMessagesWithGUI(void *pack) {
     char sender_username[CLIENT_NAME_INPUT_MAX];
     char message[CLIENT_NAME_INPUT_MAX];
 
+    clientD->public_key = NULL;
+
     while (1) {
         bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
         if (bytesReceived < 0) {
@@ -519,27 +554,81 @@ void *receiveMessagesWithGUI(void *pack) {
 
         buffer[bytesReceived] = '\0';
 
-        int i = 0;        
-        // extracting username and message from buffer pack
-         while (buffer[i] != ' ' && buffer[i] != '\0') {
-            sender_username[i] = buffer[i];
-            i++;
-        }
-        sender_username[i] = '\0';
+        if (clientD->public_key){
+            // only recieve message if security is available
+            int i = 0;        
+            // extracting username and message from buffer pack
+            while (buffer[i] != ' ' && buffer[i] != '\0') {
+                sender_username[i] = buffer[i];
+                i++;
+            }
+            sender_username[i] = '\0';
 
-        i++;
-        int j = 0;
-        while (buffer[i] != '\0') {
-            message[j] = buffer[i];
             i++;
-            j++;
-        }
-        message[j] = '\0';
+            int j = 0;
+            while (buffer[i] != '\0') {
+                message[j] = buffer[i];
+                i++;
+                j++;
+            }
+            message[j] = '\0';
 
-        add_to_messages_interface(builder, message, FALSE, sender_username);
+
+            add_to_messages_interface(builder, message, FALSE, sender_username);
+        }
+        else{
+            g_print("Public key trying to sync\n");
+            process_public_key(buffer, &clientD->public_key);
+            if (clientD->public_key){
+                g_print("Public Key synced...\n");
+                LOG_SUCCESS("recieved == [ public-security-key ] == of size [ %ld ]", strlen(buffer));
+                // g_print("%s\n", buffer);
+
+                // generate the AES_key and send it to the server
+                unsigned char *aes_key = generate_aes_key(AES_KEY_SIZE);
+                unsigned char encrypted_key[RSA_size(clientD->public_key)];
+                int encrypted_key_len = RSA_public_encrypt(
+                    AES_KEY_SIZE,      // Length of the AES key
+                    aes_key,           // AES key to encrypt
+                    encrypted_key,     // Encrypted output buffer
+                    clientD->public_key,        // RSA public key
+                    RSA_PKCS1_OAEP_PADDING // Padding for encryption
+                );
+
+                if (encrypted_key_len == -1) {
+                    fprintf(stderr, "Error encrypting AES key: %s\n", ERR_error_string(ERR_get_error(), NULL));
+                    exit(EXIT_FAILURE);
+                }
+
+                char *b64_encoded_key = base64_encode(encrypted_key, encrypted_key_len);
+                // g_print("AES_key [ %s ]\n", b64_encoded_key);
+
+                if (send(clientD->clientSocketFD, b64_encoded_key, strlen(b64_encoded_key), 0) == -1) {
+                    LOG_ERROR("Sending AES_key failed");
+                    exit(EXIT_FAILURE);
+                }
+
+            }
+            
+        }
+
+        
     }
 
     return NULL;
+}
+
+void process_public_key(char *received_key_str, RSA **client_public_key){
+    // client_public_key = (RSA *)malloc(sizeof(RSA));
+    BIO *bio = BIO_new_mem_buf(received_key_str, -1); // Create a BIO from the string
+
+    *client_public_key = PEM_read_bio_RSAPublicKey(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+
+    if (!*client_public_key) {
+        fprintf(stderr, "Error reconstructing public key\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 
@@ -568,4 +657,34 @@ void cleanup(clientDetails *clientD) {
 int file_exists(const char *filename) {
     struct stat buffer;
     return (stat(filename, &buffer) == 0);
+}
+
+unsigned char *generate_aes_key(size_t key_size) {
+    unsigned char *key = malloc(key_size);
+    if (!key || !RAND_bytes(key, key_size)) {
+        fprintf(stderr, "Error generating AES key\n");
+        exit(EXIT_FAILURE);
+    }
+    return key;
+}
+
+char *base64_encode(const unsigned char *data, size_t len) {
+    BIO *b64 = BIO_new(BIO_f_base64());
+    BIO *bio = BIO_new(BIO_s_mem());
+    b64 = BIO_push(b64, bio);
+
+    // Write data to BIO
+    BIO_write(b64, data, len);
+    BIO_flush(b64);
+
+    // Get the Base64 string
+    BUF_MEM *bptr;
+    BIO_get_mem_ptr(b64, &bptr);
+
+    char *b64_encoded = malloc(bptr->length + 1);
+    memcpy(b64_encoded, bptr->data, bptr->length);
+    b64_encoded[bptr->length] = '\0';
+
+    BIO_free_all(b64);
+    return b64_encoded;
 }
