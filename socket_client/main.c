@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
     }
 
     window = GTK_WIDGET(gtk_builder_get_object(builder, "main_window"));
+    g_signal_connect(window, "destroy", gtk_main_quit, NULL);
     gtk_builder_connect_signals(builder, NULL);
     gtk_widget_show_all(window);
     if (setupClientFromGUI(&clientD, builder) == -1) {
@@ -26,14 +27,14 @@ int main(int argc, char **argv) {
     }
 
 
-     if (send(clientD.clientSocketFD, clientD.clientName, sizeof(clientD.clientName), 0) < 0){
-        LOG_ERROR("Failed to send user details to server: %s", strerror(errno));
-        close(clientD.clientSocketFD);
-        free(clientD.clientName);
-        free(clientD.serverAddress);
-        return EXIT_FAILURE;
-    }
-    LOG_SUCCESS("Successfully sent client details to the server.");
+    //  if (send(clientD.clientSocketFD, clientD.clientName, sizeof(clientD.clientName), 0) < 0){
+    //     LOG_ERROR("Failed to send user details to server: %s", strerror(errno));
+    //     close(clientD.clientSocketFD);
+    //     free(clientD.clientName);
+    //     free(clientD.serverAddress);
+    //     return EXIT_FAILURE;
+    // }
+    // LOG_SUCCESS("Successfully sent client details to the server.");
 
     pthread_t sendThread, receiveThread;
     SMData pack_ptr = {.data = &clientD, .builder = builder};
