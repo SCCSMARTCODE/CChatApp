@@ -28,6 +28,8 @@
 #define CLIENT_NAME_INPUT_MAX 62
 #define NETWORK_MESSAGE_BUFFER_SIZE 2000
 #define AES_KEY_SIZE 32
+#define AES_KEY_SIZE 32 // 256-bit AES key
+#define AES_BLOCK_SIZE 16 // Block size for AES
 #define APP_UI_FILE_PATH "../gui/chat_app.glade"
 
 
@@ -44,6 +46,7 @@ typedef struct clientDetails{
     char *clientName;
     struct sockaddr *serverAddress;
     RSA *public_key;
+    const char *aes_key;
 }clientDetails;
 
 

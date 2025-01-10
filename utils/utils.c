@@ -323,13 +323,14 @@ void *handleNewlyAcceptedClient(void *param) {
     // }
 
     // get client info
-    char AES_key[NETWORK_MESSAGE_BUFFER_SIZE];
-    if (recv(clientFd, AES_key, sizeof(AES_key), 0) == -1){
+    char encrypted_aes_key_str[NETWORK_MESSAGE_BUFFER_SIZE];
+    if (recv(clientFd, encrypted_aes_key_str, sizeof(encrypted_aes_key_str), 0) == -1){
         LOG_ERROR("Failed to recieve AES Key\n");
         close(clientFd);
         return NULL;
     }
     else{
+        unsigned char* decrypted_aes_key = decrypt_aes_key(((HNAC *)param)->keys->private_key, encrypted_aes_key_str);
         // g_print("AES_key [ %s ]\n", AES_key);
         //
 
@@ -438,7 +439,8 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
     
     if (strlen(message) >= 1){
         add_to_messages_interface(pack->builder, message, TRUE, "YOU");
-        if (send(pack->data->clientSocketFD, message, strlen(message), 0) == -1) {
+        char *encrypted_message = aes_encrypt_string(message, pack->data->aes_key, "123456789");
+        if (send(pack->data->clientSocketFD, encrypted_message, strlen(encrypted_message), 0) == -1) {
             pack->status = FALSE;
             LOG_ERROR("Send failed");
         }
@@ -573,8 +575,9 @@ void *receiveMessagesWithGUI(void *pack) {
             }
             message[j] = '\0';
 
+            char *decrypted_message = aes_decrypt_string(message, clientD->aes_key, "123456789");
 
-            add_to_messages_interface(builder, message, FALSE, sender_username);
+            add_to_messages_interface(builder, decrypted_message, FALSE, sender_username);
         }
         else{
             g_print("Public key trying to sync\n");
@@ -687,4 +690,176 @@ char *base64_encode(const unsigned char *data, size_t len) {
 
     BIO_free_all(b64);
     return b64_encoded;
+}
+
+unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_key_str) {
+
+    // Convert stringified AES key back to binary
+    size_t encrypted_len = strlen(encrypted_aes_key_str) / 2; // Hexadecimal string, so divide by 2
+    unsigned char* encrypted_aes_key = malloc(encrypted_len);
+    if (!encrypted_aes_key) {
+        fprintf(stderr, "Failed to allocate memory for encrypted AES key\n");
+        RSA_free(rsa_private_key);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < encrypted_len; i++) {
+        sscanf(&encrypted_aes_key_str[i * 2], "%2hhx", &encrypted_aes_key[i]);
+    }
+
+    // Allocate buffer for decrypted AES key
+    size_t rsa_size = RSA_size(rsa_private_key);
+    unsigned char* decrypted_aes_key = malloc(rsa_size);
+    if (!decrypted_aes_key) {
+        fprintf(stderr, "Failed to allocate memory for decrypted AES key\n");
+        free(encrypted_aes_key);
+        RSA_free(rsa_private_key);
+        return NULL;
+    }
+
+    // Decrypt the AES key
+    int result = RSA_private_decrypt(
+        encrypted_len,
+        encrypted_aes_key,
+        decrypted_aes_key,
+        rsa_private_key,
+        RSA_PKCS1_OAEP_PADDING
+    );
+
+    free(encrypted_aes_key);
+
+    if (result == -1) {
+        fprintf(stderr, "Error decrypting AES key: %s\n", ERR_error_string(ERR_get_error(), NULL));
+        free(decrypted_aes_key);
+        return NULL;
+    }
+
+    return decrypted_aes_key;
+}
+
+
+char* aes_encrypt_string(const char* plaintext, const char* aes_key, const char* iv) {
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        fprintf(stderr, "Error creating encryption context\n");
+        return NULL;
+    }
+
+    // Initialize encryption operation
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (unsigned char*)aes_key, (unsigned char*)iv) != 1) {
+        fprintf(stderr, "Error initializing encryption\n");
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+
+    int plaintext_len = strlen(plaintext);
+    int ciphertext_len = plaintext_len + AES_BLOCK_SIZE;
+    unsigned char* ciphertext = malloc(ciphertext_len);
+    if (!ciphertext) {
+        fprintf(stderr, "Memory allocation failed for ciphertext\n");
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+
+    int len = 0, total_len = 0;
+
+    // Encrypt the plaintext
+    if (EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char*)plaintext, plaintext_len) != 1) {
+        fprintf(stderr, "Error encrypting plaintext\n");
+        free(ciphertext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+    total_len += len;
+
+    // Finalize encryption
+    if (EVP_EncryptFinal_ex(ctx, ciphertext + total_len, &len) != 1) {
+        fprintf(stderr, "Error finalizing encryption\n");
+        free(ciphertext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+    total_len += len;
+
+    // Base64 encode the ciphertext
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO* mem = BIO_new(BIO_s_mem());
+    b64 = BIO_push(b64, mem);
+    BIO_write(b64, ciphertext, total_len);
+    BIO_flush(b64);
+
+    BUF_MEM* bptr;
+    BIO_get_mem_ptr(b64, &bptr);
+
+    char* encoded_ciphertext = malloc(bptr->length + 1);
+    memcpy(encoded_ciphertext, bptr->data, bptr->length);
+    encoded_ciphertext[bptr->length] = '\0';
+
+    BIO_free_all(b64);
+    free(ciphertext);
+    EVP_CIPHER_CTX_free(ctx);
+
+    return encoded_ciphertext;
+}
+
+char* aes_decrypt_string(const char* encoded_ciphertext, const char* aes_key, const char* iv) {
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    if (!ctx) {
+        fprintf(stderr, "Error creating decryption context\n");
+        return NULL;
+    }
+
+    // Decode Base64 ciphertext
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO* mem = BIO_new_mem_buf(encoded_ciphertext, -1);
+    b64 = BIO_push(b64, mem);
+    unsigned char* ciphertext = malloc(strlen(encoded_ciphertext));
+    int ciphertext_len = BIO_read(b64, ciphertext, strlen(encoded_ciphertext));
+    BIO_free_all(b64);
+
+    unsigned char* plaintext = malloc(ciphertext_len + 1);
+    if (!plaintext) {
+        fprintf(stderr, "Memory allocation failed for plaintext\n");
+        free(ciphertext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+
+    // Initialize decryption operation
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (unsigned char*)aes_key, (unsigned char*)iv) != 1) {
+        fprintf(stderr, "Error initializing decryption\n");
+        free(ciphertext);
+        free(plaintext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+
+    int len = 0, total_len = 0;
+
+    // Decrypt the ciphertext
+    if (EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1) {
+        fprintf(stderr, "Error decrypting ciphertext\n");
+        free(ciphertext);
+        free(plaintext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+    total_len += len;
+
+    // Finalize decryption
+    if (EVP_DecryptFinal_ex(ctx, plaintext + total_len, &len) != 1) {
+        fprintf(stderr, "Error finalizing decryption\n");
+        free(ciphertext);
+        free(plaintext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
+    total_len += len;
+
+    plaintext[total_len] = '\0';
+
+    free(ciphertext);
+    EVP_CIPHER_CTX_free(ctx);
+
+    return (char*)plaintext;
 }
