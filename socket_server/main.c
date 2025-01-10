@@ -32,6 +32,7 @@ int main() {
 
     // Step 2+: manage RSA key pair generation and saving the keys to files if not exists
     manage_encryption_info(&keys);
+    serverD.keys = &keys;
 
 
     // Step 3: Start listening on the socket
