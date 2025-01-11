@@ -388,9 +388,17 @@ void *handleNewlyAcceptedClient(void *param) {
             }
             break;
         }
-
         receivedMessage[bytesReceived] = '\0';
-        broadcastMessage(clientUsername, receivedMessage, clientFd, clientFDStore);
+
+        unsigned char iv[16];
+        memcpy(iv, receivedMessage, 16);
+
+        char* ciphertext = (char*)(receivedMessage + 16);
+
+        char* plaintext = decrypt_with_aes(ciphertext, decrypted_aes_key, iv);
+
+        
+        broadcastMessage(clientUsername, plaintext, clientFd, clientFDStore, ((HNAC *)param)->client_aes_keyStore);
 
     }
 
@@ -447,7 +455,7 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
 
         RAND_bytes(iv, sizeof(iv));
 
-        unsigned char* ciphertext = encrypt_with_aes(message, pack->data->aes_key, iv);
+        char* ciphertext = encrypt_with_aes(message, pack->data->aes_key, iv);
 
         size_t packet_len = sizeof(iv) + strlen(ciphertext);
         unsigned char* packet = malloc(packet_len);
@@ -656,13 +664,25 @@ void process_public_key(char *received_key_str, RSA **client_public_key){
 }
 
 
-void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore) {
+void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore, unsigned char **client_aes_keyStore) {
     char formatted_message[NETWORK_MESSAGE_BUFFER_SIZE];
+    unsigned char iv[16];
+    RAND_bytes(iv, sizeof(iv));
 
-    snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, receivedMessage);
+
+    
 
     for (int x = 0; x < MAX_CLIENTS; x++) {
         if (clientFDStore[x] != currentClientFD && clientFDStore[x] != -1) {
+            char* ciphertext = encrypt_with_aes(receivedMessage, client_aes_keyStore[x], iv);
+            
+            size_t packet_len = sizeof(iv) + strlen(ciphertext);
+            char* packet = malloc(packet_len);
+            memcpy(packet, iv, sizeof(iv));
+            memcpy(packet + sizeof(iv), ciphertext, strlen(ciphertext));
+
+            snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, packet);
+
             if (send(clientFDStore[x], formatted_message, strlen(formatted_message), 0) < 0) {
                 printf("Failed to send message to %d", clientFDStore[x]);
             }
@@ -779,7 +799,7 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
 
 
 
-char* encrypt_with_aes(const char* plaintext, const char* aes_key, const char* iv) {
+char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, const unsigned char* iv) {
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
         fprintf(stderr, "Error creating encryption context\n");
@@ -787,7 +807,7 @@ char* encrypt_with_aes(const char* plaintext, const char* aes_key, const char* i
     }
 
     // Initialize encryption operation
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, (unsigned char*)aes_key, (unsigned char*)iv) != 1) {
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, aes_key, iv) != 1) {
         fprintf(stderr, "Error initializing encryption\n");
         EVP_CIPHER_CTX_free(ctx);
         return NULL;
@@ -833,6 +853,13 @@ char* encrypt_with_aes(const char* plaintext, const char* aes_key, const char* i
     BIO_get_mem_ptr(b64, &bptr);
 
     char* encoded_ciphertext = malloc(bptr->length + 1);
+    if (!encoded_ciphertext) {
+        fprintf(stderr, "Memory allocation failed for encoded ciphertext\n");
+        free(ciphertext);
+        BIO_free_all(b64);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
     memcpy(encoded_ciphertext, bptr->data, bptr->length);
     encoded_ciphertext[bptr->length] = '\0';
 
@@ -842,6 +869,7 @@ char* encrypt_with_aes(const char* plaintext, const char* aes_key, const char* i
 
     return encoded_ciphertext;
 }
+
 
 char* decrypt_with_aes(const char* encoded_ciphertext, const unsigned char* aes_key, const unsigned char* iv) {
     if (!encoded_ciphertext || !aes_key || !iv) {

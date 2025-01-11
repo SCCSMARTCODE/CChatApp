@@ -106,7 +106,7 @@ int setupClientFromGUI(clientDetails *clientD, GtkBuilder* builder);
 int setupServer(serverDetails *serverD);
 void *handleOtherOperationsOnSeperateThread(void*);
 void *handleNewlyAcceptedClient(void *);
-void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore);
+void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore, unsigned char **client_aes_keyStore);
 void cleanup(clientDetails *clientD);
 void process_public_key(char *received_key_str, RSA **client_public_key);
 
@@ -127,5 +127,9 @@ void send_message_handler(GtkWidget *button, SMHPack* pack);
 void add_to_messages_interface(GtkBuilder* builder, const char* message, gboolean is_sent, char* sender_username);
 
 int file_exists(const char *filename);
-char *base64_encode(const unsigned char *data, size_t len);
+char *bytes_to_base64_encode(const unsigned char *data, size_t len);
+unsigned char *base64_to_bytes_decode(const char *b64_data, size_t *out_len);
+unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_key_str);
 unsigned char *generate_aes_key(size_t key_size);
+char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, const unsigned char* iv);
+char* decrypt_with_aes(const char* encoded_ciphertext, const unsigned char* aes_key, const unsigned char* iv);
