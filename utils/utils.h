@@ -46,7 +46,7 @@ typedef struct clientDetails{
     char *clientName;
     struct sockaddr *serverAddress;
     RSA *public_key;
-    const char *aes_key;
+    const unsigned char *aes_key;
 }clientDetails;
 
 
@@ -87,6 +87,7 @@ typedef struct serverDetails{
     int serverSocketFD;
     struct sockaddr *serverAddress;
     int *clientFDStore;
+    // unsigned char *client_aes_keyStore[MAX_CLIENTS];
     SecurityKeys *keys;
     
 }serverDetails;
@@ -96,6 +97,7 @@ typedef struct HNAC{
     int *clientSocketFD;
     int *clientFDStore;
     SecurityKeys *keys;
+    unsigned char *client_aes_keyStore[MAX_CLIENTS];
 }HNAC;
 
 
