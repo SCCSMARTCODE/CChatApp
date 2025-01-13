@@ -27,7 +27,6 @@
 #define PORT_INPUT_MAX 7
 #define CLIENT_NAME_INPUT_MAX 62
 #define NETWORK_MESSAGE_BUFFER_SIZE 2000
-#define AES_KEY_SIZE 32
 #define AES_KEY_SIZE 32 // 256-bit AES key
 #define AES_BLOCK_SIZE 16 // Block size for AES
 #define APP_UI_FILE_PATH "../gui/chat_app.glade"
@@ -133,3 +132,4 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
 unsigned char *generate_aes_key(size_t key_size);
 char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, const unsigned char* iv);
 char* decrypt_with_aes(const char* encoded_ciphertext, const unsigned char* aes_key, const unsigned char* iv);
+char *sanitize_base64(const char *input);

@@ -297,7 +297,7 @@ void *handleOtherOperationsOnSeperateThread(void *serverD){
 
 void *handleNewlyAcceptedClient(void *param) {
     char receivedMessage[100];
-    // const char *basic_message = "secured Connection to Server is established Successfully\n";
+    const char *basic_message = "secured Connection to Server is established Successfully\n";
     int clientFd = *(((HNAC *)param)->clientSocketFD);
 
    
@@ -309,18 +309,7 @@ void *handleNewlyAcceptedClient(void *param) {
     }
     else{
         LOG_SUCCESS("sent == [ public-security-key ] == of size [ %ld ]", strlen(((HNAC *)param)->keys->public_key));
-        // g_print("%s\n", ((HNAC *)param)->keys->public_key);
     }
-
-     // Send a welcome message
-    // if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
-    //     LOG_ERROR("sending welcome message failed");
-    //     close(clientFd);
-    //     return NULL;
-    // }
-    // else{
-    //     g_print("Welcome message sent\n");
-    // }
 
     // get client info
     char encrypted_aes_key_str[NETWORK_MESSAGE_BUFFER_SIZE];
@@ -331,6 +320,16 @@ void *handleNewlyAcceptedClient(void *param) {
     }
     
     unsigned char* decrypted_aes_key = decrypt_aes_key(((HNAC *)param)->keys->private_key, encrypted_aes_key_str);
+
+    // Send a welcome message
+    if (send(clientFd, basic_message, strlen(basic_message), 0) == -1) {
+        LOG_ERROR("sending welcome message failed");
+        close(clientFd);
+        return NULL;
+    }
+    else{
+        g_print("Welcome message sent\n");
+    }
 
     // get client info
     char clientUsername[CLIENT_NAME_INPUT_MAX];
@@ -343,7 +342,6 @@ void *handleNewlyAcceptedClient(void *param) {
     // filling the clientFDStore for client sync
     int x;
     int *clientFDStore = ((HNAC *)param)->clientFDStore;
-
 
     for (x = 0; x < MAX_CLIENTS; x++) {
         if (clientFDStore[x] == -1) {
@@ -365,7 +363,6 @@ void *handleNewlyAcceptedClient(void *param) {
     if (x == MAX_CLIENTS) {
         LOG_INFO("Client FD Store is full; consider increasing MAX_CLIENTS");
     }
-
 
     while (1) {
         ssize_t bytesReceived = recv(clientFd, receivedMessage, sizeof(receivedMessage) - 1, 0);
@@ -392,12 +389,19 @@ void *handleNewlyAcceptedClient(void *param) {
 
         unsigned char iv[16];
         memcpy(iv, receivedMessage, 16);
+        // g_print("Verifing Iv");
+        // for (size_t i = 0; i < 16; i++) {
+        //     printf("%02X ", iv[i]);
+        //     if ((i + 1) % 16 == 0) {
+        //         printf("\n");
+        //     }
+        // }
 
         char* ciphertext = (char*)(receivedMessage + 16);
 
         char* plaintext = decrypt_with_aes(ciphertext, decrypted_aes_key, iv);
+        g_print("%s\n", plaintext);
 
-        
         broadcastMessage(clientUsername, plaintext, clientFd, clientFDStore, ((HNAC *)param)->client_aes_keyStore);
 
     }
@@ -454,14 +458,23 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
         unsigned char iv[16];
 
         RAND_bytes(iv, sizeof(iv));
+        // g_print("Verifing Iv");
+        // for (size_t i = 0; i < 16; i++) {
+        //     printf("%02X ", iv[i]);
+        //     if ((i + 1) % 16 == 0) {
+        //         printf("\n");
+        //     }
+        // }
 
         char* ciphertext = encrypt_with_aes(message, pack->data->aes_key, iv);
 
         size_t packet_len = sizeof(iv) + strlen(ciphertext);
         unsigned char* packet = malloc(packet_len);
+       
 
         memcpy(packet, iv, sizeof(iv));
         memcpy(packet + sizeof(iv), ciphertext, strlen(ciphertext));
+        g_print("packet[ %s ] === ciphettext[ %s ]\n\n", packet, ciphertext);
 
         if (send(pack->data->clientSocketFD, packet, packet_len, 0) == -1) {
             pack->status = FALSE;
@@ -617,6 +630,8 @@ void *receiveMessagesWithGUI(void *pack) {
 
                 // generate the AES_key and send it to the server
                 unsigned char *aes_key = generate_aes_key(AES_KEY_SIZE);
+                // g_print("AES key: ");
+                
                 clientD->aes_key = aes_key;
                 unsigned char encrypted_aes_key[RSA_size(clientD->public_key)];
                 int encrypted_key_len = RSA_public_encrypt(
@@ -626,6 +641,11 @@ void *receiveMessagesWithGUI(void *pack) {
                     clientD->public_key,
                     RSA_PKCS1_OAEP_PADDING
                 );
+
+                // for (size_t i = 0; i < AES_KEY_SIZE; i++) {
+                //     g_print("%02X ", encrypted_aes_key[i]);
+                // }
+                // g_print("\n");
 
                 if (encrypted_key_len == -1) {
                     fprintf(stderr, "Error encrypting AES key: %s\n", ERR_error_string(ERR_get_error(), NULL));
@@ -640,7 +660,29 @@ void *receiveMessagesWithGUI(void *pack) {
                     exit(EXIT_FAILURE);
                 }
 
+                bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
+                if (bytesReceived < 0) {
+                    LOG_ERROR("Receive failed");
+                    break;
+                } else if (bytesReceived == 0) {
+                    LOG_INFO("Server disconnected.\n");
+                    break;
+                }
+
+                buffer[bytesReceived] = '\0';
+                g_print("%s\n", buffer);
+
             }
+
+            // send client username
+             if (send(clientD->clientSocketFD, clientD->clientName, sizeof(clientD->clientName), 0) < 0){
+                LOG_ERROR("Failed to send user details to server: %s", strerror(errno));
+                close(clientD->clientSocketFD);
+                free(clientD->clientName);
+                free(clientD->serverAddress);
+                return NULL;
+            }
+            LOG_SUCCESS("Successfully sent client details to the server.");
             
         }
 
@@ -732,34 +774,78 @@ char *bytes_to_base64_encode(const unsigned char *data, size_t len) {
 }
 
 unsigned char *base64_to_bytes_decode(const char *b64_data, size_t *out_len) {
+    char *sanitized_b64 = sanitize_base64(b64_data);
+    if (!sanitized_b64) {
+        fprintf(stderr, "Sanitization failed\n");
+        return NULL;
+    }
+
     BIO *b64 = BIO_new(BIO_f_base64());
-    BIO *bio = BIO_new_mem_buf(b64_data, -1);
+    BIO *bio = BIO_new_mem_buf(sanitized_b64, -1);
     b64 = BIO_push(b64, bio);
 
     BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
 
-    size_t max_decoded_len = strlen(b64_data); // Base64 expands data by ~4/3
+    size_t max_decoded_len = strlen(sanitized_b64) * 3 / 4;
     unsigned char *decoded_data = malloc(max_decoded_len);
+    if (!decoded_data) {
+        fprintf(stderr, "Memory allocation failed\n");
+        BIO_free_all(b64);
+        free(sanitized_b64);
+        return NULL;
+    }
 
     int decoded_len = BIO_read(b64, decoded_data, max_decoded_len);
     if (decoded_len < 0) {
+        fprintf(stderr, "Base64 decoding failed\n");
         free(decoded_data);
         BIO_free_all(b64);
+        free(sanitized_b64);
         return NULL;
     }
 
     *out_len = decoded_len;
 
     BIO_free_all(b64);
+    free(sanitized_b64);
+
+    // Debugging: Print decoded key as hex
+    // g_print("Decoded AES key: ");
+    // for (size_t i = 0; i < *out_len; i++) {
+    //     g_print("%02X ", decoded_data[i]);
+    // }
+    // g_print("\n");
+
     return decoded_data;
 }
+
+
+char *sanitize_base64(const char *input) {
+    size_t len = strlen(input);
+    char *sanitized = malloc(len + 1);
+    if (!sanitized) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+    size_t j = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (input[i] != '\n' && input[i] != '\r' && input[i] != ' ') {
+            sanitized[j++] = input[i];
+        }
+    }
+    sanitized[j] = '\0';
+    // g_print("\n\nAES_key [ %s ]\n", sanitized);
+    return sanitized;
+}
+
+
 
 unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_key_str) {
     if (!rsa_private_key || !encrypted_aes_key_str) {
         fprintf(stderr, "Invalid input to decrypt_aes_key\n");
         return NULL;
     }
-
+    // g_print("\n\nAES_key [ %s ]\n", encrypted_aes_key_str);
     // Decode Base64 string back to binary
     size_t encrypted_len;
     unsigned char* encrypted_aes_key = base64_to_bytes_decode(encrypted_aes_key_str, &encrypted_len);
@@ -767,6 +853,12 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
         fprintf(stderr, "Failed to decode encrypted AES key from Base64\n");
         return NULL;
     }
+
+    // if (encrypted_len != AES_KEY_SIZE) {
+    //     fprintf(stderr, "Decoded AES key size (%zu) does not match expected size (%d)\n", encrypted_len, AES_KEY_SIZE);
+    //     free(encrypted_aes_key);
+    //     return NULL;
+    // }
 
     // Allocate buffer for decrypted AES key
     size_t rsa_size = RSA_size(rsa_private_key);
