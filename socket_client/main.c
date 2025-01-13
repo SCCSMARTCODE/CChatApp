@@ -27,15 +27,6 @@ int main(int argc, char **argv) {
     }
 
 
-    //  if (send(clientD.clientSocketFD, clientD.clientName, sizeof(clientD.clientName), 0) < 0){
-    //     LOG_ERROR("Failed to send user details to server: %s", strerror(errno));
-    //     close(clientD.clientSocketFD);
-    //     free(clientD.clientName);
-    //     free(clientD.serverAddress);
-    //     return EXIT_FAILURE;
-    // }
-    // LOG_SUCCESS("Successfully sent client details to the server.");
-
     pthread_t sendThread, receiveThread;
     SMData pack_ptr = {.data = &clientD, .builder = builder};
 
