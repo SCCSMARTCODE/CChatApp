@@ -10,7 +10,6 @@ struct sockaddr *get_address(int *ui_port, const char* ui_ip){
     char port_str[PORT_INPUT_MAX];
     int port;
 
-    // g_print("check this ---===>>0 [%d], [%s]", *ui_port, ui_ip);
 
     if (!(ui_ip && ui_port)){
         printf("Input server IP Address: ");
@@ -82,7 +81,6 @@ struct sockaddr *get_address(int *ui_port, const char* ui_ip){
         port = *ui_port;
     }
 
-    // g_print("check this ---===>> [%s], [%d]", ip, port);
     struct sockaddr_in *new_address = malloc(sizeof(struct sockaddr_in));
     new_address->sin_port = htons(port);
     new_address->sin_family = AF_INET;
@@ -106,7 +104,6 @@ char *get_client_name(const char* ui_client_name){
 
         if (fgets(clientName, CLIENT_NAME_INPUT_MAX, stdin) != NULL){
             size_t inputLen = strlen(clientName);
-            // char* endptr;
 
             if ((inputLen > 0) && (clientName[inputLen-1] == '\n')){
                 clientName[inputLen-1] = '\0';
@@ -389,18 +386,10 @@ void *handleNewlyAcceptedClient(void *param) {
 
         unsigned char iv[16];
         memcpy(iv, receivedMessage, 16);
-        // g_print("Verifing Iv");
-        // for (size_t i = 0; i < 16; i++) {
-        //     printf("%02X ", iv[i]);
-        //     if ((i + 1) % 16 == 0) {
-        //         printf("\n");
-        //     }
-        // }
 
         char* ciphertext = (char*)(receivedMessage + 16);
 
         char* plaintext = decrypt_with_aes(ciphertext, decrypted_aes_key, iv);
-        g_print("%s\n", plaintext);
 
         broadcastMessage(clientUsername, plaintext, clientFd, clientFDStore, ((HNAC *)param)->client_aes_keyStore);
 
@@ -458,13 +447,6 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
         unsigned char iv[16];
 
         RAND_bytes(iv, sizeof(iv));
-        // g_print("Verifing Iv");
-        // for (size_t i = 0; i < 16; i++) {
-        //     printf("%02X ", iv[i]);
-        //     if ((i + 1) % 16 == 0) {
-        //         printf("\n");
-        //     }
-        // }
 
         char* ciphertext = encrypt_with_aes(message, pack->data->aes_key, iv);
 
@@ -474,7 +456,6 @@ void send_message_handler(GtkWidget *button, SMHPack* pack){
 
         memcpy(packet, iv, sizeof(iv));
         memcpy(packet + sizeof(iv), ciphertext, strlen(ciphertext));
-        g_print("packet[ %s ] === ciphettext[ %s ]\n\n", packet, ciphertext);
 
         if (send(pack->data->clientSocketFD, packet, packet_len, 0) == -1) {
             pack->status = FALSE;
@@ -563,7 +544,6 @@ void *receiveMessages(void *clientD_ptr) {
         }
 
         buffer[bytesReceived] = '\0';
-        printf("%s\n", buffer);
     }
 
     return NULL;
@@ -575,10 +555,15 @@ void *receiveMessagesWithGUI(void *pack) {
     GtkBuilder* builder = ((RMWGUI *)pack)->builder;
     char buffer[NETWORK_MESSAGE_BUFFER_SIZE];
     ssize_t bytesReceived;
-    char sender_username[CLIENT_NAME_INPUT_MAX];
-    char message[CLIENT_NAME_INPUT_MAX];
 
     clientD->public_key = NULL;
+
+    unsigned char static_aes_key[32] = {
+            0xC9, 0xED, 0x07, 0xED, 0x15, 0x98, 0x0C, 0x3D,
+            0x27, 0xC9, 0x84, 0xEC, 0x11, 0x67, 0xA2, 0xAC,
+            0xC8, 0x0A, 0x30, 0xC2, 0xD9, 0xB1, 0x1F, 0xC1,
+            0x94, 0x4E, 0xC2, 0xB8, 0xB2, 0xC5, 0x58, 0x2E
+        };
 
     while (1) {
         bytesReceived = recv(clientD->clientSocketFD, buffer, sizeof(buffer) - 1, 0);
@@ -592,45 +577,51 @@ void *receiveMessagesWithGUI(void *pack) {
 
         buffer[bytesReceived] = '\0';
 
-        if (clientD->public_key){
-            // only recieve message if security is available
-            int i = 0;        
-            // extracting username and message from buffer pack
-            while (buffer[i] != ' ' && buffer[i] != '\0') {
-                sender_username[i] = buffer[i];
-                i++;
+        if (clientD->public_key) {
+    
+            if (bytesReceived < 16) {
+                LOG_ERROR("Received data is too small for IV extraction.");
+                break;
             }
-            sender_username[i] = '\0';
 
-            i++;
-            int j = 0;
-            while (buffer[i] != '\0') {
-                message[j] = buffer[i];
-                i++;
-                j++;
-            }
-            message[j] = '\0';
-
-            // extracting the iv from the message
             unsigned char iv[16];
-            memcpy(iv, message, 16);
-            char* ciphertext = (char*)(message + 16);
+            memcpy(iv, buffer, 16);
 
-            char *decrypted_message = decrypt_with_aes(ciphertext, clientD->aes_key, iv);
+            char message[NETWORK_MESSAGE_BUFFER_SIZE];
+            size_t message_length = bytesReceived - 16;
+            memcpy(message, buffer + 16, message_length);
+            message[message_length] = '\0';
 
-            add_to_messages_interface(builder, decrypted_message, FALSE, sender_username);
+            // char *decrypted_message = decrypt_with_aes(message, clientD->aes_key, iv);
+             char *decrypted_message = decrypt_with_aes(message, static_aes_key, iv);
+
+            char sender_username[CLIENT_NAME_INPUT_MAX];
+            char *space_pos = strchr(decrypted_message, ' ');
+
+            if (space_pos != NULL) {
+                size_t username_length = space_pos - decrypted_message;
+                strncpy(sender_username, decrypted_message, username_length);
+                sender_username[username_length] = '\0';
+                
+                char *actual_message = space_pos + 1;
+                
+                add_to_messages_interface(builder, actual_message, FALSE, sender_username);
+            } 
+            else {
+                g_print("No username found in the decrypted message.\n");
+                g_print("Decrypted message: [ %s ]\n", decrypted_message);
+                
+                add_to_messages_interface(builder, decrypted_message, FALSE, "Anonymous");
+            }
         }
         else{
             g_print("Public key trying to sync\n");
             process_public_key(buffer, &clientD->public_key);
             if (clientD->public_key){
                 g_print("Public Key synced...\n");
-                LOG_SUCCESS("recieved == [ public-security-key ] == of size [ %ld ]", strlen(buffer));
-                // g_print("%s\n", buffer);
+                // LOG_SUCCESS("recieved == [ public-security-key ] == of size [ %ld ]", strlen(buffer));
 
-                // generate the AES_key and send it to the server
                 unsigned char *aes_key = generate_aes_key(AES_KEY_SIZE);
-                // g_print("AES key: ");
                 
                 clientD->aes_key = aes_key;
                 unsigned char encrypted_aes_key[RSA_size(clientD->public_key)];
@@ -642,18 +633,12 @@ void *receiveMessagesWithGUI(void *pack) {
                     RSA_PKCS1_OAEP_PADDING
                 );
 
-                // for (size_t i = 0; i < AES_KEY_SIZE; i++) {
-                //     g_print("%02X ", encrypted_aes_key[i]);
-                // }
-                // g_print("\n");
-
                 if (encrypted_key_len == -1) {
                     fprintf(stderr, "Error encrypting AES key: %s\n", ERR_error_string(ERR_get_error(), NULL));
                     exit(EXIT_FAILURE);
                 }
 
                 char *b64_encoded_key = bytes_to_base64_encode(encrypted_aes_key, encrypted_key_len);
-                // g_print("AES_key [ %s ]\n", b64_encoded_key);
 
                 if (send(clientD->clientSocketFD, b64_encoded_key, strlen(b64_encoded_key), 0) == -1) {
                     LOG_ERROR("Sending AES_key failed");
@@ -670,7 +655,6 @@ void *receiveMessagesWithGUI(void *pack) {
                 }
 
                 buffer[bytesReceived] = '\0';
-                g_print("%s\n", buffer);
 
             }
 
@@ -693,7 +677,6 @@ void *receiveMessagesWithGUI(void *pack) {
 }
 
 void process_public_key(char *received_key_str, RSA **client_public_key){
-    // client_public_key = (RSA *)malloc(sizeof(RSA));
     BIO *bio = BIO_new_mem_buf(received_key_str, -1); // Create a BIO from the string
 
     *client_public_key = PEM_read_bio_RSAPublicKey(bio, NULL, NULL, NULL);
@@ -708,26 +691,42 @@ void process_public_key(char *received_key_str, RSA **client_public_key){
 
 void broadcastMessage(char *clientUsername, char *receivedMessage, int currentClientFD, int *clientFDStore, unsigned char **client_aes_keyStore) {
     char formatted_message[NETWORK_MESSAGE_BUFFER_SIZE];
-    unsigned char iv[16];
-    RAND_bytes(iv, sizeof(iv));
-
-
-    
+    unsigned char static_aes_key[32] = {
+            0xC9, 0xED, 0x07, 0xED, 0x15, 0x98, 0x0C, 0x3D,
+            0x27, 0xC9, 0x84, 0xEC, 0x11, 0x67, 0xA2, 0xAC,
+            0xC8, 0x0A, 0x30, 0xC2, 0xD9, 0xB1, 0x1F, 0xC1,
+            0x94, 0x4E, 0xC2, 0xB8, 0xB2, 0xC5, 0x58, 0x2E
+        };
 
     for (int x = 0; x < MAX_CLIENTS; x++) {
+
+        unsigned char iv[16];
+        if (RAND_bytes(iv, sizeof(iv)) != 1) {
+            fprintf(stderr, "Error generating random IV\n");
+            return;
+        }
+
         if (clientFDStore[x] != currentClientFD && clientFDStore[x] != -1) {
-            char* ciphertext = encrypt_with_aes(receivedMessage, client_aes_keyStore[x], iv);
+
+            snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, receivedMessage);
+
+            if(!client_aes_keyStore[x]){
+                g_print("Invalid Parameter\n");
+            }
             
+            char* ciphertext = encrypt_with_aes(formatted_message, static_aes_key, iv);
+            // char* ciphertext = encrypt_with_aes(formatted_message, client_aes_keyStore[x], iv);
+
             size_t packet_len = sizeof(iv) + strlen(ciphertext);
             char* packet = malloc(packet_len);
             memcpy(packet, iv, sizeof(iv));
             memcpy(packet + sizeof(iv), ciphertext, strlen(ciphertext));
 
-            snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, packet);
-
-            if (send(clientFDStore[x], formatted_message, strlen(formatted_message), 0) < 0) {
+            if (send(clientFDStore[x], packet, packet_len, 0) < 0) {
                 printf("Failed to send message to %d", clientFDStore[x]);
             }
+            free(packet);
+            free(ciphertext);
         }
     }
 }
@@ -809,13 +808,6 @@ unsigned char *base64_to_bytes_decode(const char *b64_data, size_t *out_len) {
     BIO_free_all(b64);
     free(sanitized_b64);
 
-    // Debugging: Print decoded key as hex
-    // g_print("Decoded AES key: ");
-    // for (size_t i = 0; i < *out_len; i++) {
-    //     g_print("%02X ", decoded_data[i]);
-    // }
-    // g_print("\n");
-
     return decoded_data;
 }
 
@@ -834,7 +826,6 @@ char *sanitize_base64(const char *input) {
         }
     }
     sanitized[j] = '\0';
-    // g_print("\n\nAES_key [ %s ]\n", sanitized);
     return sanitized;
 }
 
@@ -845,7 +836,6 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
         fprintf(stderr, "Invalid input to decrypt_aes_key\n");
         return NULL;
     }
-    // g_print("\n\nAES_key [ %s ]\n", encrypted_aes_key_str);
     // Decode Base64 string back to binary
     size_t encrypted_len;
     unsigned char* encrypted_aes_key = base64_to_bytes_decode(encrypted_aes_key_str, &encrypted_len);
@@ -853,12 +843,6 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
         fprintf(stderr, "Failed to decode encrypted AES key from Base64\n");
         return NULL;
     }
-
-    // if (encrypted_len != AES_KEY_SIZE) {
-    //     fprintf(stderr, "Decoded AES key size (%zu) does not match expected size (%d)\n", encrypted_len, AES_KEY_SIZE);
-    //     free(encrypted_aes_key);
-    //     return NULL;
-    // }
 
     // Allocate buffer for decrypted AES key
     size_t rsa_size = RSA_size(rsa_private_key);
@@ -892,6 +876,19 @@ unsigned char* decrypt_aes_key(RSA* rsa_private_key, const char* encrypted_aes_k
 
 
 char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, const unsigned char* iv) {
+    if (!plaintext) {
+        fprintf(stderr, "plaintext invalid\n");
+        return NULL;
+    }
+    if (!aes_key) {
+        fprintf(stderr, "aes_key invalid\n");
+        return NULL;
+    }
+    if (!iv) {
+        fprintf(stderr, "iv invalid\n");
+        return NULL;
+    }
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) {
         fprintf(stderr, "Error creating encryption context\n");
@@ -915,17 +912,14 @@ char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, cons
     }
 
     int len = 0, total_len = 0;
-
-    // Encrypt the plaintext
     if (EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char*)plaintext, plaintext_len) != 1) {
         fprintf(stderr, "Error encrypting plaintext\n");
         free(ciphertext);
         EVP_CIPHER_CTX_free(ctx);
         return NULL;
     }
-    total_len += len;
+    total_len = len;
 
-    // Finalize encryption
     if (EVP_EncryptFinal_ex(ctx, ciphertext + total_len, &len) != 1) {
         fprintf(stderr, "Error finalizing encryption\n");
         free(ciphertext);
@@ -937,13 +931,24 @@ char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, cons
     // Base64 encode the ciphertext
     BIO* b64 = BIO_new(BIO_f_base64());
     BIO* mem = BIO_new(BIO_s_mem());
+    if (!b64 || !mem) {
+        fprintf(stderr, "Error creating BIOs\n");
+        free(ciphertext);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
     b64 = BIO_push(b64, mem);
-    BIO_write(b64, ciphertext, total_len);
-    BIO_flush(b64);
+
+    if (BIO_write(b64, ciphertext, total_len) <= 0 || BIO_flush(b64) <= 0) {
+        fprintf(stderr, "Error during Base64 encoding\n");
+        free(ciphertext);
+        BIO_free_all(b64);
+        EVP_CIPHER_CTX_free(ctx);
+        return NULL;
+    }
 
     BUF_MEM* bptr;
     BIO_get_mem_ptr(b64, &bptr);
-
     char* encoded_ciphertext = malloc(bptr->length + 1);
     if (!encoded_ciphertext) {
         fprintf(stderr, "Memory allocation failed for encoded ciphertext\n");
@@ -961,6 +966,7 @@ char* encrypt_with_aes(const char* plaintext, const unsigned char* aes_key, cons
 
     return encoded_ciphertext;
 }
+
 
 
 char* decrypt_with_aes(const char* encoded_ciphertext, const unsigned char* aes_key, const unsigned char* iv) {

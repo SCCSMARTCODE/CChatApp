@@ -22,7 +22,7 @@
 
 #define UNUSED(x) (void)(x)
 
-#define MAX_CLIENTS 20
+#define MAX_CLIENTS 200
 #define IP_INPUT_MAX 40 // This extend to manage ipv4 and ipv6(for future implementation)
 #define PORT_INPUT_MAX 7
 #define CLIENT_NAME_INPUT_MAX 62
