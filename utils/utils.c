@@ -293,7 +293,7 @@ void *handleOtherOperationsOnSeperateThread(void *serverD){
 }
 
 void *handleNewlyAcceptedClient(void *param) {
-    char receivedMessage[100];
+    char receivedMessage[NETWORK_MESSAGE_BUFFER_SIZE];
     const char *basic_message = "secured Connection to Server is established Successfully\n";
     int clientFd = *(((HNAC *)param)->clientSocketFD);
 
@@ -343,7 +343,7 @@ void *handleNewlyAcceptedClient(void *param) {
     for (x = 0; x < MAX_CLIENTS; x++) {
         if (clientFDStore[x] == -1) {
             clientFDStore[x] = clientFd;
-            unsigned char* key_ptr = (unsigned char *)malloc(AES_KEY_SIZE);
+            unsigned char* key_ptr = (unsigned char *)malloc(AES_KEY_SIZE*sizeof(unsigned char *));
             if (!key_ptr) {
                 LOG_ERROR("Memory allocation failed for client AES key");
                 break;
@@ -593,6 +593,16 @@ void *receiveMessagesWithGUI(void *pack) {
             message[message_length] = '\0';
 
             // char *decrypted_message = decrypt_with_aes(message, clientD->aes_key, iv);
+
+            // for (size_t j = 0; j < AES_KEY_SIZE; j++) { // Iterate over each byte in the key
+            //     printf("%02X ", clientD->aes_key[j]); // Access the specific byte
+            //     if ((j + 1) % 16 == 0) {
+            //         printf("\n");
+            //     }
+            // }
+            // printf("\n");
+            
+
              char *decrypted_message = decrypt_with_aes(message, static_aes_key, iv);
 
             char sender_username[CLIENT_NAME_INPUT_MAX];
@@ -709,6 +719,19 @@ void broadcastMessage(char *clientUsername, char *receivedMessage, int currentCl
         if (clientFDStore[x] != currentClientFD && clientFDStore[x] != -1) {
 
             snprintf(formatted_message, sizeof(formatted_message), MESSAGE_FORMAT, clientUsername, receivedMessage);
+
+            // for (size_t i = 0; i < MAX_CLIENTS; i++) { // Iterate over clients
+            // printf("Key for client %zu: ", i);
+            // if (client_aes_keyStore[i]){
+            //     for (size_t j = 0; j < AES_KEY_SIZE; j++) { // Iterate over each byte in the key
+            //         printf("%02X ", client_aes_keyStore[i][j]); // Access the specific byte
+            //         if ((j + 1) % 16 == 0) {
+            //             printf("\n");
+            //         }
+            //     }
+            //     printf("\n");
+            // }
+            // }
 
             if(!client_aes_keyStore[x]){
                 g_print("Invalid Parameter\n");
