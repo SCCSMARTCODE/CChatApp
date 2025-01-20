@@ -52,7 +52,7 @@ CChatApp is a lightweight chat application built from scratch in C. It supports 
 - [x] Integrate GUI with networking logic  
 
 ### Phase 4: Advanced Features  
-- [ ] Message encryption using OpenSSL  
+- [x] Message encryption using OpenSSL  
 - [ ] File transfer support  
 - [ ] Chat themes and user preferences  
 
